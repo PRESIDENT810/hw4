@@ -5,6 +5,70 @@ import pickle
 from typing import Iterator, Optional, List, Sized, Union, Iterable, Any
 from needle import backend_ndarray as nd
 
+import struct
+import gzip
+
+
+def unzip(file_path: str) -> bytes:
+    with gzip.open(file_path, "rb") as f_in:
+        # Read the uncompressed data
+        uncompressed_data = f_in.read()
+        return uncompressed_data
+
+
+def parse_images(file_path: str) -> np.ndarray[np.float32]:
+    data: bytes = unzip(file_path)
+    image_num: int = int.from_bytes(data[4:8], byteorder='big')
+    row_num: int = int.from_bytes(data[8:12], byteorder='big')
+    col_num: int = int.from_bytes(data[12:16], byteorder='big')
+    data = data[16:]
+    assert (row_num == 28 and col_num == 28 and len(data) % image_num == 0)
+    image_size = int(len(data) / image_num)
+    images = np.ndarray((image_num, image_size), dtype=np.float32)
+    for i in range(image_num):
+        tup = struct.unpack_from("B" * image_size, data, i * image_size)
+        images[i] = np.array(tup).astype(np.float32)
+    images_normed = (images - np.min(images)) / (np.max(images) - np.min(images))
+    return images_normed
+
+
+def parse_labels(file_path: str) -> np.ndarray[np.uint8]:
+    data: bytes = unzip(file_path)
+    label_num: int = int.from_bytes(data[4:8], byteorder='big')
+    data = data[8:]
+    labels = np.ndarray((label_num,), dtype=np.uint8)
+    for i in range(label_num):
+        labels[i] = struct.unpack_from("B", data, i)[0]
+    return labels
+
+
+def parse_mnist(image_filename, label_filename):
+    """ Read an images and labels file in MNIST format.  See this page:
+    http://yann.lecun.com/exdb/mnist/ for a description of the file format.
+
+    Args:
+        image_filename (str): name of gzipped images file in MNIST format
+        label_filename (str): name of gzipped labels file in MNIST format
+
+    Returns:
+        Tuple (X,y):
+            X (numpy.ndarray[np.float32]): 2D numpy array containing the loaded
+                data.  The dimensionality of the data should be
+                (num_examples x input_dim) where 'input_dim' is the full
+                dimension of the data, e.g., since MNIST images are 28x28, it
+                will be 784.  Values should be of type np.float32, and the data
+                should be normalized to have a minimum value of 0.0 and a
+                maximum value of 1.0. The normalization should be applied uniformly
+                across the whole dataset, _not_ individual images.
+
+            y (numpy.ndarray[dtype=np.uint8]): 1D numpy array containing the
+                labels of the examples.  Values should be of type np.uint8 and
+                for MNIST will contain the values 0-9.
+    """
+    images = parse_images(image_filename)
+    labels = parse_labels(label_filename)
+    return images, labels
+
 
 class Transform:
     def __call__(self, x):
@@ -25,9 +89,9 @@ class RandomFlipHorizontal(Transform):
         Note: use the provided code to provide randomness, for easier testing
         """
         flip_img = np.random.rand() < self.p
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        if not flip_img:
+            return img
+        return np.flip(img, axis=1)
 
 
 class RandomCrop(Transform):
@@ -42,12 +106,12 @@ class RandomCrop(Transform):
             H x W x C NAArray of cliped image
         Note: generate the image shifted by shift_x, shift_y specified below
         """
-        shift_x, shift_y = np.random.randint(
-            low=-self.padding, high=self.padding + 1, size=2
-        )
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        shift_x, shift_y = np.random.randint(low=-self.padding, high=self.padding + 1, size=2)
+        padding = self.padding
+        H, W, C = img.shape
+        img = np.pad(img, ((self.padding, self.padding), (self.padding, self.padding), (0, 0)), "constant")
+        img = img[padding + shift_x:padding + shift_x + H, padding + shift_y:padding + shift_y + W, :]
+        return img
 
 
 class Dataset:
@@ -90,52 +154,60 @@ class DataLoader:
     batch_size: Optional[int]
 
     def __init__(
-        self,
-        dataset: Dataset,
-        batch_size: Optional[int] = 1,
-        shuffle: bool = False,
+            self,
+            dataset: Dataset,
+            batch_size: Optional[int] = 1,
+            shuffle: bool = False,
     ):
-
         self.dataset = dataset
         self.shuffle = shuffle
         self.batch_size = batch_size
-        if not self.shuffle:
-            self.ordering = np.array_split(
-                np.arange(len(dataset)), range(batch_size, len(dataset), batch_size)
-            )
+        if not shuffle:
+            arange = np.arange(len(dataset))
+            self.ordering = np.array_split(arange, range(batch_size, len(dataset), batch_size))
 
     def __iter__(self):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        self.idx = 0
+        # Careful! We must shuffle again if __iter__ is called,
+        # because we don't want the same shuffle for every iteration!!!
+        if self.shuffle:
+            arange = np.arange(len(self.dataset))
+            np.random.shuffle(arange)
+            self.ordering = np.array_split(arange, range(self.batch_size, len(self.dataset), self.batch_size))
         return self
 
     def __next__(self):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        if self.idx == len(self.ordering):
+            raise StopIteration
+        samples = [Tensor(x) for x in self.dataset[self.ordering[self.idx]]]
+        self.idx += 1
+        return tuple(samples)
 
 
 class MNISTDataset(Dataset):
+    X: np.ndarray
+    y: np.ndarray
+    size: int
+
     def __init__(
-        self,
-        image_filename: str,
-        label_filename: str,
-        transforms: Optional[List] = None,
+            self,
+            image_filename: str,
+            label_filename: str,
+            transforms: Optional[List] = None,
     ):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        super().__init__(transforms)
+        self.X, self.y = parse_mnist(image_filename, label_filename)
+        self.X = self.X.reshape((-1, 28, 28, 1))
+        self.size = self.y.shape[0]
 
     def __getitem__(self, index) -> object:
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        image = self.X[index]
+        image = self.apply_transforms(image)
+        label = self.y[index]
+        return image.reshape(-1, 28 * 28 * 1), label
 
     def __len__(self) -> int:
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        return self.size
 
 
 class CIFAR10Dataset(Dataset):
