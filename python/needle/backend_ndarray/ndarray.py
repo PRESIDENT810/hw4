@@ -2,6 +2,7 @@ import operator
 import math
 from functools import reduce
 import numpy as np
+from copy import deepcopy
 from . import ndarray_backend_numpy
 from . import ndarray_backend_cpu
 
@@ -11,7 +12,7 @@ def prod(x):
 
 
 class BackendDevice:
-    """A backend device, wrapps the implementation module."""
+    """A backend device, wraps the implementation module."""
 
     def __init__(self, name, mod):
         self.name = name
@@ -85,7 +86,7 @@ def all_devices():
 
 
 class NDArray:
-    """A generic ND array class that may contain multipe different backends
+    """A generic ND array class that may contain multiple different backends
     i.e., a Numpy backend, a native CPU backend, or a GPU backend.
 
     This class will only contains those functions that you need to implement
@@ -242,16 +243,18 @@ class NDArray:
             new_shape (tuple): new shape of the array
 
         Returns:
-            NDArray : reshaped array; this will point to thep
+            NDArray : reshaped array; this will point to the same memory as the original NDArray.
         """
+        if not self.is_compact():
+            raise ValueError
+        if prod(self.shape) != prod(new_shape):
+            raise ValueError
+        return NDArray.make(new_shape, strides=None, device=self._device, handle=self._handle, offset=self._offset)
 
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
 
     def permute(self, new_axes):
         """
-        Permute order of the dimensions.  new_axes describes a permuation of the
+        Permute order of the dimensions.  new_axes describes a permutation of the
         existing axes, so e.g.:
           - If we have an array with dimension "BHWC" then .permute((0,3,1,2))
             would convert this to "BCHW" order.
@@ -259,20 +262,23 @@ class NDArray:
         Like reshape, this operation should not copy memory, but achieves the
         permuting by just adjusting the shape/strides of the array.  That is,
         it returns a new array that has the dimensions permuted as desired, but
-        which points to the same memroy as the original array.
-
+        which points to the same memory as the original array.
         Args:
-            new_axes (tuple): permuation order of the dimensions
-
+            new_axes (tuple): permutation order of the dimensions
         Returns:
             NDarray : new NDArray object with permuted dimensions, pointing
             to the same memory as the original NDArray (i.e., just shape and
             strides changed).
         """
 
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        new_strides = list(self.strides)
+        new_shape = list(self.shape)
+        for i, axis in enumerate(new_axes):
+            new_strides[i] = self.strides[axis]
+            new_shape[i] = self.shape[axis]
+        new_strides = tuple(new_strides)
+        new_shape = tuple(new_shape)
+        return NDArray.make(new_shape, strides=new_strides, device=self.device, handle=self._handle, offset=self._offset)
 
     def broadcast_to(self, new_shape):
         """
@@ -293,9 +299,14 @@ class NDArray:
             NDArray: the new NDArray object with the new broadcast shape; should
             point to the same memory as the original array.
         """
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        new_stride = list(self.strides)
+        for i, size in enumerate(new_shape):
+            if self.shape[i] != 1:
+                assert new_shape[i] == self.shape[i]
+            else:
+                new_stride[i] = 0
+        new_stride = tuple(new_stride)
+        return NDArray.make(new_shape, strides=new_stride, device=self.device, handle=self._handle, offset=self._offset)
 
     ### Get and set elements
 
@@ -340,12 +351,11 @@ class NDArray:
 
         Args:
             idxs tuple: (after stub code processes), a tuple of slice elements
-            coresponding to the subset of the matrix to get
-
+            corresponding to the subset of the matrix to get
         Returns:
             NDArray: a new NDArray object corresponding to the selected
-            subset of elements.  As before, this should not copy memroy but just
-            manipulate the shape/strides/offset of the new array, referecing
+            subset of elements.  As before, this should not copy memory but just
+            manipulate the shape/strides/offset of the new array, referencing
             the same array as the original one.
         """
 
@@ -359,10 +369,17 @@ class NDArray:
             ]
         )
         assert len(idxs) == self.ndim, "Need indexes equal to number of dimensions"
-
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        new_shape = list(self.shape)
+        new_stride = list(self.strides)
+        new_offset = self._offset
+        for i, s in enumerate(idxs):
+            assert s.step >= 0
+            new_shape[i] = (s.stop - s.start + s.step - 1) // s.step
+            new_stride[i] *= s.step
+            new_offset += s.start * self.strides[i]
+        new_shape = tuple(new_shape)
+        new_stride = tuple(new_stride)
+        return NDArray.make(new_shape, new_stride, self.device, self._handle, new_offset)
 
     def __setitem__(self, idxs, other):
         """Set the values of a view into an array, using the same semantics
@@ -390,7 +407,7 @@ class NDArray:
     ### Collection of elementwise and scalar function: add, multiply, boolean, etc
 
     def ewise_or_scalar(self, other, ewise_func, scalar_func):
-        """Run either an elementwise or scalar version of a function,
+        """Run either an element-wise or scalar version of a function,
         depending on whether "other" is an NDArray or scalar
         """
         out = NDArray.make(self.shape, device=self.device)
@@ -477,14 +494,14 @@ class NDArray:
 
     ### Matrix multiplication
     def __matmul__(self, other):
-        """Matrix multplication of two arrays.  This requires that both arrays
+        """Matrix multiplication of two arrays.  This requires that both arrays
         be 2D (i.e., we don't handle batch matrix multiplication), and that the
         sizes match up properly for matrix multiplication.
 
         In the case of the CPU backend, you will implement an efficient "tiled"
         version of matrix multiplication for the case when all dimensions of
         the array are divisible by self.device.__tile_size__.  In this case,
-        the code below will restride and compact the matrix into tiled form,
+        the code below will re-stride and compact the matrix into tiled form,
         and then pass to the relevant CPU backend.  For the CPU version we will
         just fall back to the naive CPU implementation if the array shape is not
         a multiple of the tile size

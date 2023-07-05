@@ -1,6 +1,6 @@
 """Core data structures."""
 import needle
-from typing import List, Optional, NamedTuple, Tuple, Union
+from typing import List, Optional, NamedTuple, Tuple, Union, Dict
 from collections import namedtuple
 import numpy
 from needle import init
@@ -314,9 +314,10 @@ class Tensor(Value):
             return needle.ops.MulScalar(other)(self)
 
     def __pow__(self, other):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        if isinstance(other, Tensor):
+            raise NotImplementedError()
+        else:
+            return needle.ops.PowerScalar(other)(self)
 
     def __sub__(self, other):
         if isinstance(other, Tensor):
@@ -367,18 +368,42 @@ def compute_gradient_of_variables(output_tensor, out_grad):
 
     Store the computed result in the grad field of each Variable.
     """
-    # a map from node to a list of gradient contributions from each output node
-    node_to_output_grads_list: Dict[Tensor, List[Tensor]] = {}
+    # a map from node to a list of gradient contributions from each output node (partial adjoint to each output)
+    # node_to_output_grads_list[node_i] = [adjoint_ij1, adjoint_ij2...] for all i -> j
+    # if there is only one output, then this key has only adjoint as its corresponding value
+    # Suppose we have i -> [j1, j2...];
+    # adjoint_i = d(loss) / d(node_i), by triangle rule we have:
+    # adjoint_i = sum([adjoint_ij]) for all i -> j, and by chain rule we have
+    # adjoint_ij = (d(loss) / d(node_j)) * (d(node_j) / d(node_i)), which is equivalent to
+    # adjoint_ij = adjoint_j * (d(node_j) / d(node_i))
+    # Note: if i only have one output j, we have adjoint_i = adjoint_ij
+    node_to_output_grads_list: Dict[Tensor, List[Tensor]] = {output_tensor: [out_grad]}
     # Special note on initializing gradient of
     # We are really taking a derivative of the scalar reduce_sum(output_node)
     # instead of the vector output_node. But this is the common case for loss function.
-    node_to_output_grads_list[output_tensor] = [out_grad]
-    # Traverse graph in reverse topological order given the output_node that we are taking gradient wrt.
-    reverse_topo_order = list(reversed(find_topo_sort([output_tensor])))
 
-    ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
-    ### END YOUR SOLUTION
+    # Traverse graph in reverse topological order given the output_node that we are taking gradient wrt.
+    reverse_topo_order: List[Tensor] = list(reversed(find_topo_sort([output_tensor])))
+
+    for node_i in reverse_topo_order:
+        # adjoint_i = sum([adjoint_ij]) for all i -> j
+        adjoint_i = sum(node_to_output_grads_list[node_i])
+        node_i.grad = adjoint_i
+        if len(node_i.inputs) == 0:
+            continue
+        adjoints = node_i.op.gradient(adjoint_i, node_i)
+        inputs = node_i.inputs
+        if not isinstance(adjoints, tuple):
+            adjoints = [adjoints]
+        else:
+            adjoints = list(adjoints)
+        inputs = list(inputs)
+        for i in range(len(inputs)):
+            node_k = inputs[i]
+            adjoint_ki = adjoints[i]
+            node_to_output_grads_list[node_k] = node_to_output_grads_list.get(node_k, [])
+            node_to_output_grads_list[node_k].append(adjoint_ki)
+
 
 
 def find_topo_sort(node_list: List[Value]) -> List[Value]:
@@ -389,16 +414,22 @@ def find_topo_sort(node_list: List[Value]) -> List[Value]:
     after all its predecessors are traversed due to post-order DFS, we get a topological
     sort.
     """
-    ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
-    ### END YOUR SOLUTION
+    topo_sorted: List[Value] = []
+    visited = {}
+    for node in node_list:
+        topo_sort_dfs(node, visited, topo_sorted)
+    return topo_sorted
 
 
-def topo_sort_dfs(node, visited, topo_order):
+def topo_sort_dfs(node: Value, visited: Dict[Value, bool], topo_order: List[Value]):
     """Post-order DFS"""
-    ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
-    ### END YOUR SOLUTION
+    if node in visited:
+        return
+    for input_node in node.inputs:
+        topo_sort_dfs(input_node, visited, topo_order)
+    topo_order.append(node)
+    visited[node] = True
+    return
 
 
 ##############################
