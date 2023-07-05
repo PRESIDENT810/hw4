@@ -387,7 +387,7 @@ def compute_gradient_of_variables(output_tensor, out_grad):
 
     for node_i in reverse_topo_order:
         # adjoint_i = sum([adjoint_ij]) for all i -> j
-        adjoint_i = sum(node_to_output_grads_list[node_i])
+        adjoint_i = sum_node_list(node_to_output_grads_list[node_i])
         node_i.grad = adjoint_i
         if len(node_i.inputs) == 0:
             continue

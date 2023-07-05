@@ -410,16 +410,19 @@ class Stack(TensorOp):
         """
         self.axis = axis
 
-    def compute(self, args):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
-
+    def compute(self, args: List[Tensor]):
+        stack_shape = list(args[0].shape)
+        stack_shape = stack_shape[:self.axis] + [len(args)] + stack_shape[self.axis:]
+        stack_shape = tuple(stack_shape)
+        out = init.zeros(*stack_shape, device=args[0].device).cached_data
+        slices = [slice(None)] * len(out.shape)
+        for i, arg in enumerate(args):
+            slices[self.axis] = slice(i, i+1, 1)
+            out[tuple(slices)] = arg
+        return out
 
     def gradient(self, out_grad, node):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        return split(out_grad, self.axis)
 
 
 def stack(args, axis):
@@ -437,14 +440,17 @@ class Split(TensorTupleOp):
         self.axis = axis
 
     def compute(self, A):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        outs = []
+        cnt = A.shape[self.axis]
+        slices = [slice(None)] * len(A.shape)
+        for i in range(cnt):
+            slices[self.axis] = slice(i, i + 1, 1)
+            input_tensor = A[tuple(slices)]
+            outs.append(input_tensor.sum(axis=(self.axis,)))
+        return tuple(outs)
 
     def gradient(self, out_grad, node):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        return stack(out_grad, self.axis)
 
 
 def split(a, axis):
