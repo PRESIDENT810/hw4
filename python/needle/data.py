@@ -2,7 +2,7 @@ import numpy as np
 from .autograd import Tensor
 import os
 import pickle
-from typing import Iterator, Optional, List, Sized, Union, Iterable, Any
+from typing import Iterator, Optional, List, Dict, Sized, Union, Iterable, Any
 from needle import backend_ndarray as nd
 
 import struct
@@ -16,7 +16,7 @@ def unzip(file_path: str) -> bytes:
         return uncompressed_data
 
 
-def parse_images(file_path: str) -> np.ndarray[np.float32]:
+def parse_images(file_path: str):
     data: bytes = unzip(file_path)
     image_num: int = int.from_bytes(data[4:8], byteorder='big')
     row_num: int = int.from_bytes(data[8:12], byteorder='big')
@@ -32,7 +32,7 @@ def parse_images(file_path: str) -> np.ndarray[np.float32]:
     return images_normed
 
 
-def parse_labels(file_path: str) -> np.ndarray[np.uint8]:
+def parse_labels(file_path: str):
     data: bytes = unzip(file_path)
     label_num: int = int.from_bytes(data[4:8], byteorder='big')
     data = data[8:]
@@ -210,7 +210,15 @@ class MNISTDataset(Dataset):
         return self.size
 
 
+def unpickle(file):
+    with open(file, 'rb') as fo:
+        dic = pickle.load(fo, encoding='bytes')
+    return dic
+
+
 class CIFAR10Dataset(Dataset):
+    metadata: Dict
+
     def __init__(
         self,
         base_folder: str,
@@ -227,26 +235,46 @@ class CIFAR10Dataset(Dataset):
         X - numpy array of images
         y - numpy array of labels
         """
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        super().__init__(transforms)
+        metadata = unpickle(base_folder+"/batches.meta")
+        self.label_names = metadata[b'label_names']
+        self.num_cases_per_batch = metadata[b'num_cases_per_batch']
+        self.num_vis = metadata[b'num_vis']
+        X = []
+        y = []
+        if train:
+            for i in range(1,6):
+                file = base_folder+"/data_batch_{}".format(i)
+                unpacked = unpickle(file)
+                labels = unpacked[b'labels']
+                data = unpacked[b'data']
+                filenames = unpacked[b'filenames']
+                X.append(data)
+                y += labels
+        else:
+            file = base_folder+"/test_batch"
+            unpacked = unpickle(file)
+            labels = unpacked[b'labels']
+            data = unpacked[b'data']
+            filenames = unpacked[b'filenames']
+            X.append(data)
+            y += labels
+        self.X = np.array(X).reshape(-1, 3, 32, 32)
+        self.y = np.array(y)
+        return
 
     def __getitem__(self, index) -> object:
         """
         Returns the image, label at given index
         Image should be of shape (3, 32, 32)
         """
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        return self.X[index], self.y[index]
 
     def __len__(self) -> int:
         """
         Returns the total number of examples in the dataset
         """
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        return self.y.shape[0]
 
 
 class NDArrayDataset(Dataset):
