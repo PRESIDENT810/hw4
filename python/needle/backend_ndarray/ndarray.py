@@ -599,10 +599,15 @@ class NDArray:
         which lists for _all_ axes the left and right padding amount, e.g.,
         axes = ( (0, 0), (1, 1), (0, 0)) pads the middle axis with a 0 on the left and right side.
         """
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
-
+        new_shape = list(self.shape)
+        slices = []
+        for i, axis in enumerate(axes):
+            new_shape[i] += axis[0] + axis[1]
+            slices.append(slice(axis[0], self.shape[i]+axis[0], 1))
+        padded = NDArray.make(new_shape, device=self.device)
+        padded[tuple([slice(None) for _ in new_shape])] = 0
+        padded[tuple(slices)] = self
+        return padded
 
 
 def array(a, dtype="float32", device=None):
