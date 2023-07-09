@@ -588,10 +588,17 @@ class NDArray:
         Flip this ndarray along the specified axes.
         Note: compact() before returning.
         """
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
-
+        if axes is None:
+            return self.compact()
+        new_offset = self._offset
+        new_shape = list(self.shape)
+        new_stride = list(self.strides)
+        for axis in axes:
+            new_stride[axis] *= -1
+            new_offset += (self.shape[axis]-1) * self.strides[axis]
+        flipped = NDArray.make(tuple(new_shape), strides=tuple(new_stride), device=self.device,
+                               handle=self._handle, offset=new_offset)
+        return flipped.compact()
 
     def pad(self, axes):
         """
