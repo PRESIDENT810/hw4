@@ -478,15 +478,20 @@ class Dilate(TensorOp):
         self.axes = axes
         self.dilation = dilation
 
-    def compute(self, a):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+    def compute(self, a: NDArray):
+        slices = [slice(None)]*len(a.shape)
+        new_shape = list(a.shape)
+        for axis in self.axes:
+            new_shape[axis] *= (self.dilation+1)
+            slices[axis] = slice(0, new_shape[axis], self.dilation+1)
+        out = NDArray.make(new_shape, device=a.device)
+        out[tuple([slice(None)] * len(out.shape))] = 0
+        out[tuple(slices)] = a
+        return out.compact()
 
-    def gradient(self, out_grad, node):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+
+    def gradient(self, out_grad: Tensor, node: Tensor):
+        return undilate(out_grad, self.axes, self.dilation)
 
 
 def dilate(a, axes, dilation):
@@ -498,14 +503,16 @@ class UnDilate(TensorOp):
         self.dilation = dilation
 
     def compute(self, a):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        new_stride = list(a.strides)
+        new_shape = list(a.shape)
+        for axis in self.axes:
+            new_stride[axis] *= (self.dilation+1)
+            new_shape[axis] = int(new_shape[axis] / (self.dilation+1))
+        out = a.as_strided(tuple(new_shape), tuple(new_stride))
+        return out.compact()
 
     def gradient(self, out_grad, node):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        return dilate(out_grad, self.axes, self.dilation)
 
 
 def undilate(a, axes, dilation):
