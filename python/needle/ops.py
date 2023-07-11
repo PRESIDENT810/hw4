@@ -524,10 +524,22 @@ class Conv(TensorOp):
         self.stride = stride
         self.padding = padding
 
-    def compute(self, A, B):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+    def compute(self, A: NDArray, B: NDArray):
+        if self.padding != 0:
+            A = A.pad(((0, 0), (self.padding, self.padding), (self.padding, self.padding), (0, 0)))
+        N, H, W, C_in = A.shape
+        K, _, _, C_out = B.shape
+        Ns, Hs, Ws, Cs = A.strides
+        inner_dim = K * K * C_in
+        H_ = int((H-K+1) / self.stride)
+        W_ = int((W-K+1) / self.stride)
+        outer_dim = N * H_ * W_
+        A_strided = A.as_strided(shape=(N, H-K+1, W-K+1, K, K, C_in), strides=(Ns, Hs, Ws, Hs, Ws, Cs))
+        A_strided = A_strided[:, ::self.stride, ::self.stride, :, :, :].compact()
+        A_strided = A_strided.reshape((outer_dim, inner_dim))
+        out = A_strided @ B.reshape((inner_dim, C_out))
+        out = out.reshape((N, H_, W_, C_out))
+        return out
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
@@ -535,7 +547,7 @@ class Conv(TensorOp):
         ### END YOUR SOLUTION
 
 
-def conv(a, b, stride=1, padding=1):
+def conv(a, b, stride=1, padding=0):
     return Conv(stride, padding)(a, b)
 
 
