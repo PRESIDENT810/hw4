@@ -534,8 +534,9 @@ class Conv(TensorOp):
         H_ = int((H-K+1) / self.stride)
         W_ = int((W-K+1) / self.stride)
         outer_dim = N * H_ * W_
-        A_strided = A.as_strided(shape=(N, H-K+1, W-K+1, K, K, C_in), strides=(Ns, Hs, Ws, Hs, Ws, Cs))
-        A_strided = A_strided[:, ::self.stride, ::self.stride, :, :, :].compact()
+        A_strided = A.as_strided(shape=(N, H_, W_, K, K, C_in),
+                                 strides=(Ns, Hs * self.stride, Ws * self.stride, Hs, Ws, Cs))
+        A_strided = A_strided.compact()
         A_strided = A_strided.reshape((outer_dim, inner_dim))
         out = A_strided @ B.reshape((inner_dim, C_out))
         out = out.reshape((N, H_, W_, C_out))
