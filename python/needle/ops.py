@@ -554,25 +554,16 @@ class Conv(TensorOp):
         K, _, _, _ = B.shape
 
         # Compute A_grad (X.grad)
-        B_mod1 = B
-        out_mod1 = out_grad
-        B_mod1 = flip(B_mod1, (0, 1))
-        B_mod1 = transpose(B_mod1)
-        out_mod1 = dilate(out_mod1, (1, 2), self.stride-1)
-        A_grad = conv(out_mod1, B_mod1, padding=(K-1-self.padding))
+        B = flip(B, (0, 1))
+        B = transpose(B)
+        out_grad = dilate(out_grad, (1, 2), self.stride-1)
+        A_grad = conv(out_grad, B, padding=(K-1-self.padding))
 
         # Compute B_grad (W.grad)
-        A_mod2 = A
-        out_mod2 = out_mod1
-        A_mod2 = A_mod2.transpose((0, 3))
-        out_mod2 = out_mod2.transpose((0, 2)).transpose((0, 1))
-        B_grad = conv(A_mod2, out_mod2, padding=self.padding)
+        A = A.transpose((0, 3))
+        out_grad = out_grad.transpose((0, 2)).transpose((0, 1))
+        B_grad = conv(A, out_grad, padding=self.padding)
         B_grad = B_grad.transpose((0, 2)).transpose((0, 1))
-
-        if A_grad.shape != A.shape:
-            print("Fuck")
-        if B_grad.shape != B.shape:
-            print("Fuck")
 
         return A_grad, B_grad
 
