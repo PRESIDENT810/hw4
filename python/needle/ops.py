@@ -1,7 +1,7 @@
 """Operatpr table."""
 # Global operator table.
 from numbers import Number
-from typing import Optional, List
+from typing import Optional, List, Tuple
 from .autograd import NDArray
 from .autograd import Op, Tensor, Value, TensorOp
 from .autograd import TensorTuple, TensorTupleOp
@@ -479,6 +479,8 @@ class Dilate(TensorOp):
         self.dilation = dilation
 
     def compute(self, a: NDArray):
+        if self.dilation == 0:
+            return a
         slices = [slice(None)]*len(a.shape)
         new_shape = list(a.shape)
         for axis in self.axes:
@@ -503,6 +505,8 @@ class UnDilate(TensorOp):
         self.dilation = dilation
 
     def compute(self, a):
+        if self.dilation == 0:
+            return a
         new_stride = list(a.strides)
         new_shape = list(a.shape)
         for axis in self.axes:
@@ -531,22 +535,46 @@ class Conv(TensorOp):
         K, _, _, C_out = B.shape
         Ns, Hs, Ws, Cs = A.strides
         inner_dim = K * K * C_in
-        H_ = int((H-K+1) / self.stride)
-        W_ = int((W-K+1) / self.stride)
+        H_ = H-K+1
+        W_ = W-K+1
         outer_dim = N * H_ * W_
         A_strided = A.as_strided(shape=(N, H_, W_, K, K, C_in),
-                                 strides=(Ns, Hs * self.stride, Ws * self.stride, Hs, Ws, Cs))
+                                 strides=(Ns, Hs, Ws, Hs, Ws, Cs))
         A_strided = A_strided.compact()
         A_strided = A_strided.reshape((outer_dim, inner_dim))
-        out = A_strided @ B.reshape((inner_dim, C_out))
-        out = out.reshape((N, H_, W_, C_out))
+        out = A_strided @ B.compact().reshape((inner_dim, C_out))
+        out = out.reshape((N, H_, W_, C_out))[:, ::self.stride, ::self.stride, :]
         return out
 
-    def gradient(self, out_grad, node):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+    def gradient(self, out_grad: Tensor, node: Tensor):
+        A: Tensor = node.inputs[0]
+        B: Tensor = node.inputs[1]
+        N_out, H_out, W_out, C_out = out_grad.shape
+        N, H, W, C_in = A.shape
+        K, _, _, _ = B.shape
 
+        # Compute A_grad (X.grad)
+        B_mod1 = B
+        out_mod1 = out_grad
+        B_mod1 = flip(B_mod1, (0, 1))
+        B_mod1 = transpose(B_mod1)
+        out_mod1 = dilate(out_mod1, (1, 2), self.stride-1)
+        A_grad = conv(out_mod1, B_mod1, padding=(K-1-self.padding))
+
+        # Compute B_grad (W.grad)
+        A_mod2 = A
+        out_mod2 = out_mod1
+        A_mod2 = A_mod2.transpose((0, 3))
+        out_mod2 = out_mod2.transpose((0, 2)).transpose((0, 1))
+        B_grad = conv(A_mod2, out_mod2, padding=self.padding)
+        B_grad = B_grad.transpose((0, 2)).transpose((0, 1))
+
+        if A_grad.shape != A.shape:
+            print("Fuck")
+        if B_grad.shape != B.shape:
+            print("Fuck")
+
+        return A_grad, B_grad
 
 def conv(a, b, stride=1, padding=0):
     return Conv(stride, padding)(a, b)
