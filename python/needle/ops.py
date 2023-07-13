@@ -241,8 +241,11 @@ def broadcast_to(a, shape):
 
 
 class Summation(TensorOp):
-    def __init__(self, axes: Optional[tuple] = None):
-        self.axes = axes
+    def __init__(self, axes: Optional[tuple | int] = None):
+        if isinstance(axes, int):
+            self.axes = (axes, )
+        else:
+            self.axes = axes
 
     def compute(self, a: NDArray) -> NDArray:
         axes = [None]

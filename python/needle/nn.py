@@ -91,9 +91,11 @@ class Linear(Module):
         self.out_features = out_features
 
         # Initialize weights using Kaiming initialization
-        self.weight = Parameter(init.kaiming_uniform(in_features, out_features, requires_grad=True, dtype=dtype))
+        self.weight = Parameter(init.kaiming_uniform(in_features, out_features, shape=(in_features, out_features),
+                                 device=device, requires_grad=True, dtype=dtype))
         if bias:
-            self.bias = Parameter(init.kaiming_uniform(out_features, 1, requires_grad=True, dtype=dtype).reshape((1, out_features)))
+            self.bias = Parameter(init.kaiming_uniform(out_features, 1, shape=(out_features, 1), device=device,
+                                                       requires_grad=True, dtype=dtype).reshape((1, out_features)))
         else:
             self.bias = None
 
@@ -167,8 +169,8 @@ class BatchNorm1d(Module):
         self.momentum = momentum
         self.weight = Parameter(init.ones(1, dim, requires_grad=True, device=device, dtype=dtype))
         self.bias = Parameter(init.zeros(1, dim, requires_grad=True, device=device, dtype=dtype))
-        self.running_mean = init.zeros(1, dim, requires_grad=True, device=device, dtype=dtype).reshape(dim)
-        self.running_var = init.ones(1, dim, requires_grad=True, device=device, dtype=dtype).reshape(dim)
+        self.running_mean = init.zeros(1, dim, requires_grad=True, device=device, dtype=dtype).reshape((dim, ))
+        self.running_var = init.ones(1, dim, requires_grad=True, device=device, dtype=dtype).reshape((dim, ))
 
     def forward(self, x: Tensor) -> Tensor:
         mean = ops.summation(x, axes=0)
@@ -189,8 +191,8 @@ class BatchNorm1d(Module):
         else:  # Testing phase
             mean = self.running_mean
             var = self.running_var
-        self.running_mean = running_mean.reshape(self.dim).detach()
-        self.running_var = running_var.reshape(self.dim).detach()
+        self.running_mean = running_mean.reshape((self.dim, )).detach()
+        self.running_var = running_var.reshape((self.dim, )).detach()
         var = var + self.eps
         var = ops.power_scalar(var, 0.5)
         y = x - ops.broadcast_to(mean, x.shape)
