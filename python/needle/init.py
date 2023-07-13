@@ -68,27 +68,23 @@ def ones_like(array, *, device=None, requires_grad=False):
     )
 
 
-def xavier_uniform(fan_in, fan_out, shape=None, gain=1.0, **kwargs):
-    ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
-    ### END YOUR SOLUTION
+def xavier_uniform(fan_in, fan_out, shape=None, gain=1.0, dtype="float32", **kwargs):
+    a = gain * ((6 / (fan_in + fan_out)) ** 0.5)
+    return rand(*shape, low=-a, high=a, dtype=dtype, **kwargs)
 
 
-def xavier_normal(fan_in, fan_out, shape=None, gain=1.0, **kwargs):
-    ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
-    ### END YOUR SOLUTION
+def xavier_normal(fan_in, fan_out, shape=None, gain=1.0, dtype="float32", **kwargs):
+    std = gain * ((2 / (fan_in + fan_out)) ** 0.5)
+    return randn(*shape, std=std, dtype=dtype, **kwargs)
 
 
-def kaiming_uniform(fan_in, fan_out, shape=None, nonlinearity="relu", **kwargs):
+def kaiming_uniform(fan_in, fan_out, shape=None, nonlinearity="relu", dtype="float32", **kwargs):
     assert nonlinearity == "relu", "Only relu supported currently"
-    ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
-    ### END YOUR SOLUTION
+    bound = (2 ** 0.5) * ((3 / fan_in) ** 0.5)
+    return rand(*shape, low=-bound, high=bound, dtype=dtype, **kwargs)
 
 
-def kaiming_normal(fan_in, fan_out, shape=None, nonlinearity="relu", **kwargs):
+def kaiming_normal(fan_in, fan_out, shape=None, nonlinearity="relu", dtype="float32", **kwargs):
     assert nonlinearity == "relu", "Only relu supported currently"
-    ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
-    ### END YOUR SOLUTION
+    std = (2 / fan_in) ** 0.5
+    return randn(*shape, std=std, dtype=dtype, **kwargs)

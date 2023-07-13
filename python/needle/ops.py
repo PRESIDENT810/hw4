@@ -216,7 +216,7 @@ class Reshape(TensorOp):
         return a.reshape(self.shape).compact()
 
     def gradient(self, out_grad, node):
-        return reshape(out_grad, node.inputs[0].shape).compact()
+        return reshape(out_grad, node.inputs[0].shape)
 
 
 def reshape(a, shape):
@@ -245,7 +245,12 @@ class Summation(TensorOp):
         self.axes = axes
 
     def compute(self, a: NDArray) -> NDArray:
-        return a.sum(axis=self.axes)
+        axes = [None]
+        if self.axes is not None:
+            axes = sorted(self.axes, reverse=True)
+        for axis in axes:
+            a = a.sum(axis=axis)
+        return a
 
     def gradient(self, out_grad, node):
         a: Tensor = node.inputs[0]
