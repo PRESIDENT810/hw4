@@ -288,7 +288,13 @@ class Conv(Module):
         self.stride = stride
 
         kernel_shape = (kernel_size, kernel_size, in_channels, out_channels)
-        self.weight = Parameter(init.kaiming_uniform(in_channels, out_channels, shape=kernel_shape, requires_grad=True, device=device, dtype=dtype))
+        self.weight = Parameter(
+            init.kaiming_uniform(
+                in_channels*kernel_size*kernel_size,
+                out_channels*kernel_size*kernel_size,
+                shape=kernel_shape, requires_grad=True, device=device, dtype=dtype
+            )
+        )
         if bias:
             bound = 1 / ((in_channels * kernel_size**2)**0.5)
             self.bias = Parameter(init.rand(out_channels, low=-1*bound, high=bound, requires_grad=True, device=device, dtype=dtype))
@@ -298,10 +304,10 @@ class Conv(Module):
     def forward(self, x: Tensor) -> Tensor:
         # x: NCHW -> NHWC
         x = x.transpose((1, 2)).transpose((2, 3))
-        y = ops.conv(x, self.weight, self.stride, padding=(self.kernel_size-1)//2)
+        out = ops.conv(x, self.weight, self.stride, padding=self.kernel_size//2)
         if self.bias is not None:
-            y = y + self.bias.reshape((1, 1, 1, self.out_channels)).broadcast_to(y.shape)
-        return y.transpose((2, 3)).transpose((1, 2))
+            out = out + self.bias.reshape((1, 1, 1, self.out_channels)).broadcast_to(out.shape)
+        return out.transpose((2, 3)).transpose((1, 2))
 
 class RNNCell(Module):
     def __init__(self, input_size, hidden_size, bias=True, nonlinearity='tanh', device=None, dtype="float32"):
