@@ -152,7 +152,7 @@ class Sequential(Module):
 class SoftmaxLoss(Module):
     def forward(self, logits: Tensor, y: Tensor):
         loss = ops.logsumexp(logits, axes=1)
-        y_onehot = logits * init.one_hot(logits.shape[1], y)
+        y_onehot = logits * init.one_hot(logits.shape[1], y, device=logits.device, dtype=logits.dtype)
         return (loss - y_onehot.sum(axes=1)).sum() / logits.shape[0]
 
 
@@ -169,8 +169,8 @@ class BatchNorm1d(Module):
         self.momentum = momentum
         self.weight = Parameter(init.ones(1, dim, requires_grad=True, device=device, dtype=dtype))
         self.bias = Parameter(init.zeros(1, dim, requires_grad=True, device=device, dtype=dtype))
-        self.running_mean = init.zeros(1, dim, requires_grad=True, device=device, dtype=dtype).reshape((dim, ))
-        self.running_var = init.ones(1, dim, requires_grad=True, device=device, dtype=dtype).reshape((dim, ))
+        self.running_mean: Tensor = init.zeros(1, dim, requires_grad=True, device=device, dtype=dtype).reshape((dim, ))
+        self.running_var: Tensor = init.ones(1, dim, requires_grad=True, device=device, dtype=dtype).reshape((dim, ))
 
     def forward(self, x: Tensor) -> Tensor:
         mean = ops.summation(x, axes=0)
@@ -182,8 +182,8 @@ class BatchNorm1d(Module):
         var = ops.summation(var, 0)
         var = var.reshape((1, var.shape[0]))
         var = var / x.shape[0]
-        running_mean = self.running_mean.reshape((1, self.dim))
-        running_var = self.running_var.reshape((1, self.dim))
+        running_mean: Tensor = self.running_mean.reshape((1, self.dim))
+        running_var: Tensor = self.running_var.reshape((1, self.dim))
 
         if self.training:  # Training phase
             running_mean = (running_mean * (1 - self.momentum) + mean * self.momentum)
@@ -329,9 +329,25 @@ class RNNCell(Module):
         Weights and biases are initialized from U(-sqrt(k), sqrt(k)) where k = 1/hidden_size
         """
         super().__init__()
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.nonlinearity = ops.tanh if nonlinearity == "tanh" else ops.relu
+
+        k = 1 / hidden_size
+        bound = k**0.5
+        self.W_ih = Parameter(init.rand(input_size, hidden_size, low=-1*bound, high=bound, device=device,
+                                        dtype=dtype, requires_grad=True))
+        self.W_hh = Parameter(init.rand(hidden_size, hidden_size, low=-1 * bound, high=bound, device=device,
+                                        dtype=dtype, requires_grad=True))
+        if bias:
+            self.bias_ih = Parameter(init.rand(hidden_size, low=-1 * bound, high=bound, device=device,
+                                               dtype=dtype, requires_grad=True))
+            self.bias_hh = Parameter(init.rand(hidden_size, low=-1 * bound, high=bound, device=device,
+                                               dtype=dtype, requires_grad=True))
+        else:
+            self.bias_ih = None
+            self.bias_hh = None
+
 
     def forward(self, X, h=None):
         """
@@ -341,12 +357,18 @@ class RNNCell(Module):
             for each element in the batch. Defaults to zero if not provided.
 
         Outputs:
-        h' of shape (bs, hidden_size): Tensor contianing the next hidden state
+        h' of shape (bs, hidden_size): Tensor containing the next hidden state
             for each element in the batch.
         """
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        out = X @ self.W_ih
+        if self.bias_ih is not None:
+            out += self.bias_ih.reshape((1, self.hidden_size)).broadcast_to(out.shape)
+        if h is not None:
+            out += h @ self.W_hh
+        if self.bias_hh is not None:
+            out += self.bias_hh.reshape((1, self.hidden_size)).broadcast_to(out.shape)
+        out = self.nonlinearity(out)
+        return out
 
 
 class RNN(Module):
@@ -363,7 +385,7 @@ class RNN(Module):
 
         Variables:
         rnn_cells[k].W_ih: The learnable input-hidden weights of the k-th layer,
-            of shape (input_size, hidden_size) for k=0. Otherwise the shape is
+            of shape (input_size, hidden_size) for k=0. Otherwise, the shape is
             (hidden_size, hidden_size).
         rnn_cells[k].W_hh: The learnable hidden-hidden weights of the k-th layer,
             of shape (hidden_size, hidden_size).
@@ -373,9 +395,14 @@ class RNN(Module):
             of shape (hidden_size,).
         """
         super().__init__()
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        self.rnn_cells: list[RNNCell] = []
+        self.num_layers = num_layers
+        for i in range(num_layers):
+            if i == 0:
+                self.rnn_cells.append(RNNCell(hidden_size, hidden_size, bias, nonlinearity, device, dtype))
+            else:
+                self.rnn_cells.append(RNNCell(input_size, hidden_size, bias, nonlinearity, device, dtype))
+
 
     def forward(self, X, h0=None):
         """
@@ -389,9 +416,17 @@ class RNN(Module):
             (h_t) from the last layer of the RNN, for each t.
         h_n of shape (num_layers, bs, hidden_size) containing the final hidden state for each element in the batch.
         """
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        seq_len = X.shape[0]
+        last_layer = list(ops.split(X, axis=0))
+        h0 = list(ops.split(h0, axis=0)) if h0 is not None else [None] * self.num_layers
+        hn = []
+        for l in range(self.num_layers):
+            last_cell = h0[l]
+            for t in range(seq_len):
+                last_cell = self.rnn_cells[l](last_layer[t], last_cell)
+                last_layer[t] = last_cell
+            hn.append(last_cell)
+        return ops.stack(last_layer, axis=0), ops.stack(hn, axis=0)
 
 
 class LSTMCell(Module):

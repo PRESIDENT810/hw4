@@ -6,7 +6,6 @@ from .autograd import NDArray
 from .autograd import Op, Tensor, Value, TensorOp
 from .autograd import TensorTuple, TensorTupleOp
 from . import init
-import numpy
 
 from .backend_selection import array_api, NDArray
 
@@ -99,7 +98,7 @@ class AddScalar(TensorOp):
         self.scalar = scalar
 
     def compute(self, a: NDArray):
-        return a + numpy.float32(self.scalar)
+        return a + self.scalar
 
     def gradient(self, out_grad: Tensor, node: Tensor):
         return out_grad
@@ -128,7 +127,7 @@ class MulScalar(TensorOp):
         self.scalar = scalar
 
     def compute(self, a: NDArray):
-        return a * numpy.float32(self.scalar)
+        return a * self.scalar
 
     def gradient(self, out_grad: Tensor, node: Tensor):
         return (out_grad * self.scalar,)
@@ -213,7 +212,7 @@ class Reshape(TensorOp):
         self.shape = shape
 
     def compute(self, a: NDArray) -> NDArray:
-        return a.reshape(self.shape).compact()
+        return a.compact().reshape(self.shape).compact()
 
     def gradient(self, out_grad, node):
         return reshape(out_grad, node.inputs[0].shape)
@@ -296,7 +295,7 @@ class Negate(TensorOp):
 
     def gradient(self, out_grad, node):
         a = node.inputs[0]
-        return -1 * out_grad * Tensor(array_api.ones(a.shape))
+        return -1 * out_grad * init.ones(*a.shape, device=a.device, dtype=a.dtype, requires_grad=True)
 
 
 def negate(a):
@@ -337,8 +336,7 @@ class ReLU(TensorOp):
         a = node.inputs[0]
         if isinstance(a, Tensor):
             a = a.realize_cached_data()
-        return out_grad * Tensor(array_api.where(a <= 0, 0, 1))
-
+        return out_grad * (a > 0)
 
 def relu(a):
     return ReLU()(a)
