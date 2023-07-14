@@ -133,9 +133,7 @@ class Sigmoid(Module):
         super().__init__()
 
     def forward(self, x: Tensor) -> Tensor:
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        return (1+ops.exp(-1*x)) ** -1
 
 
 class Sequential(Module):
@@ -399,9 +397,9 @@ class RNN(Module):
         self.num_layers = num_layers
         for i in range(num_layers):
             if i == 0:
-                self.rnn_cells.append(RNNCell(hidden_size, hidden_size, bias, nonlinearity, device, dtype))
-            else:
                 self.rnn_cells.append(RNNCell(input_size, hidden_size, bias, nonlinearity, device, dtype))
+            else:
+                self.rnn_cells.append(RNNCell(hidden_size, hidden_size, bias, nonlinearity, device, dtype))
 
 
     def forward(self, X, h0=None):
@@ -448,9 +446,24 @@ class LSTMCell(Module):
         Weights and biases are initialized from U(-sqrt(k), sqrt(k)) where k = 1/hidden_size
         """
         super().__init__()
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.sigmoid = Sigmoid()
+
+        k = 1 / hidden_size
+        bound = k ** 0.5
+        self.W_ih = Parameter(init.rand(input_size, 4*hidden_size, low=-1 * bound, high=bound, device=device,
+                                        dtype=dtype, requires_grad=True))
+        self.W_hh = Parameter(init.rand(hidden_size, 4*hidden_size, low=-1 * bound, high=bound, device=device,
+                                        dtype=dtype, requires_grad=True))
+        if bias:
+            self.bias_ih = Parameter(init.rand(4*hidden_size, low=-1 * bound, high=bound, device=device,
+                                               dtype=dtype, requires_grad=True))
+            self.bias_hh = Parameter(init.rand(4*hidden_size, low=-1 * bound, high=bound, device=device,
+                                               dtype=dtype, requires_grad=True))
+        else:
+            self.bias_ih = None
+            self.bias_hh = None
 
 
     def forward(self, X, h=None):
@@ -469,9 +482,34 @@ class LSTMCell(Module):
         c' of shape (bs, hidden_size): Tensor containing the next cell state for each
             element in the batch.
         """
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        h0, c0 = h if h is not None else (None, None)
+
+        ifgo = X @ self.W_ih
+        if self.bias_ih is not None:
+            ifgo += self.bias_ih.reshape((1, 4*self.hidden_size)).broadcast_to(ifgo.shape)
+        if h0 is not None:
+            ifgo += h0 @ self.W_hh
+        if self.bias_hh is not None:
+            ifgo += self.bias_hh.reshape((1, 4*self.hidden_size)).broadcast_to(ifgo.shape)
+
+        ifgo_split = ops.split(ifgo, 1)
+        i = ops.stack([ifgo_split[i] for i in range(0, self.hidden_size)], 1)
+        f = ops.stack([ifgo_split[i] for i in range(self.hidden_size, 2 * self.hidden_size)], 1)
+        g = ops.stack([ifgo_split[i] for i in range(2 * self.hidden_size, 3 * self.hidden_size)], 1)
+        o = ops.stack([ifgo_split[i] for i in range(3 * self.hidden_size, 4 * self.hidden_size)], 1)
+
+        i = self.sigmoid(i)
+        f = self.sigmoid(f)
+        g = ops.tanh(g)
+        o = self.sigmoid(o)
+
+        c = i * g
+        if c0 is not None:
+            c += f * c0
+        h = o * ops.tanh(c)
+
+        return h, c
+
 
 
 class LSTM(Module):
@@ -497,9 +535,14 @@ class LSTM(Module):
         lstm_cells[k].bias_hh: The learnable hidden-hidden bias of the k-th layer,
             of shape (4*hidden_size,).
         """
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        super().__init__()
+        self.lstm_cells: list[LSTMCell] = []
+        self.num_layers = num_layers
+        for i in range(num_layers):
+            if i == 0:
+                self.lstm_cells.append(LSTMCell(input_size, hidden_size, bias, device, dtype))
+            else:
+                self.lstm_cells.append(LSTMCell(hidden_size, hidden_size, bias, device, dtype))
 
     def forward(self, X, h=None):
         """
@@ -518,9 +561,23 @@ class LSTM(Module):
             h_n of shape (num_layers, bs, hidden_size) containing the final hidden state for each element in the batch.
             h_n of shape (num_layers, bs, hidden_size) containing the final hidden cell state for each element in the batch.
         """
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        h0, c0 = h if h is not None else (None, None)
+
+        seq_len = X.shape[0]
+        last_layer = list(ops.split(X, axis=0))
+        h0 = list(ops.split(h0, axis=0)) if h0 is not None else [None] * self.num_layers
+        c0 = list(ops.split(c0, axis=0)) if c0 is not None else [None] * self.num_layers
+        hn = []
+        cn = []
+        for l in range(self.num_layers):
+            last_h0 = h0[l]
+            last_c0 = c0[l]
+            for t in range(seq_len):
+                last_h0, last_c0 = self.lstm_cells[l](last_layer[t], (last_h0, last_c0))
+                last_layer[t] = last_h0
+            hn.append(last_h0)
+            cn.append(last_c0)
+        return ops.stack(last_layer, axis=0), (ops.stack(hn, axis=0), ops.stack(cn, axis=0))
 
 
 class Embedding(Module):
