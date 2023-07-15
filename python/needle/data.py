@@ -1,3 +1,5 @@
+import base64
+
 import numpy as np
 from .autograd import Tensor
 import os
@@ -304,6 +306,7 @@ class Dictionary(object):
     def __init__(self):
         self.word2idx = {}
         self.idx2word = []
+        self.count = 0
 
     def add_word(self, word):
         """
@@ -312,17 +315,19 @@ class Dictionary(object):
         and appends to the list of words.
         Returns the word's unique ID.
         """
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        if word in self.word2idx:
+            return self.word2idx[word]
+        uid = self.count
+        self.count += 1
+        self.word2idx[word] = uid
+        self.idx2word.append(word)
+        return uid
 
     def __len__(self):
         """
         Returns the number of unique words in the dictionary.
         """
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        return len(self.idx2word)
 
 
 
@@ -347,9 +352,24 @@ class Corpus(object):
         Output:
         ids: List of ids
         """
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        words_in_file = []
+        with open(path, 'r') as file:
+            if max_lines is None:
+                max_lines = -1
+            i = 0
+            while i != max_lines:
+                line: str = file.readline()
+                i += 1
+                if line == "":
+                    break
+                words_in_line = line.strip().split(" ")
+                for word in words_in_line:
+                    words_in_file.append(word)
+                words_in_file.append('<eos>')
+        tokens = []
+        for word in words_in_file:
+            tokens.append(self.dictionary.add_word(word))
+        return tokens
 
 
 def batchify(data, batch_size, device, dtype):
@@ -368,9 +388,10 @@ def batchify(data, batch_size, device, dtype):
     If the data cannot be evenly divided by the batch size, trim off the remainder.
     Returns the data as a numpy array of shape (nbatch, batch_size).
     """
-    ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
-    ### END YOUR SOLUTION
+    nbatch = len(data) // batch_size
+    data = data[:nbatch*batch_size]
+    batchfied = np.array(data).reshape((batch_size, nbatch)).transpose()
+    return batchfied
 
 
 def get_batch(batches, i, bptt, device=None, dtype=None):
@@ -392,6 +413,6 @@ def get_batch(batches, i, bptt, device=None, dtype=None):
     data - Tensor of shape (bptt, bs) with cached data as NDArray
     target - Tensor of shape (bptt*bs,) with cached data as NDArray
     """
-    ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
-    ### END YOUR SOLUTION
+    data = batches[i: i+bptt]
+    target = batches[i+1: i+bptt+1].reshape(-1,)
+    return Tensor(data, device=device, dtype=dtype), Tensor(target, device=device, dtype=dtype)
