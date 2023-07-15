@@ -358,11 +358,13 @@ class RNNCell(Module):
         h' of shape (bs, hidden_size): Tensor containing the next hidden state
             for each element in the batch.
         """
+        bs = X.shape[0]
         out = X @ self.W_ih
         if self.bias_ih is not None:
             out += self.bias_ih.reshape((1, self.hidden_size)).broadcast_to(out.shape)
-        if h is not None:
-            out += h @ self.W_hh
+        if h is None:
+            h = init.zeros(bs, self.hidden_size, device=X.device, dtype=X.dtype, requires_grad=True)
+        out += h @ self.W_hh
         if self.bias_hh is not None:
             out += self.bias_hh.reshape((1, self.hidden_size)).broadcast_to(out.shape)
         out = self.nonlinearity(out)
@@ -482,13 +484,15 @@ class LSTMCell(Module):
         c' of shape (bs, hidden_size): Tensor containing the next cell state for each
             element in the batch.
         """
+        bs = X.shape[0]
         h0, c0 = h if h is not None else (None, None)
 
         ifgo = X @ self.W_ih
         if self.bias_ih is not None:
             ifgo += self.bias_ih.reshape((1, 4*self.hidden_size)).broadcast_to(ifgo.shape)
-        if h0 is not None:
-            ifgo += h0 @ self.W_hh
+        if h0 is None:
+            h0 = init.zeros(bs, self.hidden_size, device=X.device, dtype=X.dtype, requires_grad=True)
+        ifgo += h0 @ self.W_hh
         if self.bias_hh is not None:
             ifgo += self.bias_hh.reshape((1, 4*self.hidden_size)).broadcast_to(ifgo.shape)
 
@@ -594,9 +598,9 @@ class Embedding(Module):
         weight - The learnable weights of shape (num_embeddings, embedding_dim)
             initialized from N(0, 1).
         """
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        self.num_embeddings = num_embeddings
+        self.embedding_dim = embedding_dim
+        self.weight = Parameter(init.randn(num_embeddings, embedding_dim, requires_grad=True, device=device, dtype=dtype))
 
     def forward(self, x: Tensor) -> Tensor:
         """
@@ -608,6 +612,8 @@ class Embedding(Module):
         Output:
         output of shape (seq_len, bs, embedding_dim)
         """
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        seq_len, bs = x.shape
+        x = init.one_hot(self.num_embeddings, x, device=x.device, dtype=x.dtype, requires_grad=True)
+        x = x.reshape((seq_len*bs, self.num_embeddings))
+        out = x @ self.weight
+        return out.reshape((seq_len, bs, self.embedding_dim))
